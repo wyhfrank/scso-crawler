@@ -19,12 +19,12 @@ class MyDB:
         self.c.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY, '
                        'name TEXT, repo_id INT, lang TEXT, url TEXT, hash TEXT, loc INT, location TEXT);')
         self.c.execute('CREATE TABLE IF NOT EXISTS repos (url TEXT PRIMARY KEY, name TEXT, commits INT);')
-        self.c.execute('CREATE TABLE IF NOT EXISTS questions (id INTEGER PRIMARY KEY);')
-        self.c.execute('CREATE TABLE IF NOT EXISTS fq_xref (fid INTEGER, qid INTEGER, PRIMARY KEY(fid, qid));')
+        self.c.execute('CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY, type INT);')
+        self.c.execute('CREATE TABLE IF NOT EXISTS file_post_xref (fid INTEGER, pid INTEGER, PRIMARY KEY(fid, pid));')
         self.conn.commit()
 
     def insertfile(self, fid=0, name="", repo="", repo_name="", lang="", url="",
-                   hash="", loc=0, location="", qids=None):
+                   hash="", loc=0, location="", posts=None):
         self.c.execute('INSERT OR IGNORE INTO repos (url, name) VALUES (?,?)',
                        (repo, repo_name))
         self.c.execute('SELECT oid FROM repos WHERE url=?', (repo,))
@@ -36,10 +36,10 @@ class MyDB:
         else:
             print "Warning: Cannot find repo url: {0}".format(repo)
 
-        if qids:
-            for qid in qids:
-                self.c.execute('INSERT OR IGNORE INTO questions (id) VALUES (?)', (qid,))
-                self.c.execute('INSERT OR IGNORE INTO fq_xref (fid, qid) VALUES (?,?)', (fid, qid,))
+        if posts:
+            for post_id, type_id in posts:
+                self.c.execute('INSERT OR IGNORE INTO posts (id, type) VALUES (?,?)', (post_id, type_id))
+                self.c.execute('INSERT OR IGNORE INTO file_post_xref (fid, pid) VALUES (?,?)', (fid, post_id,))
 
         self.conn.commit()
 

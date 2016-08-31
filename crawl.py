@@ -17,12 +17,13 @@ db_file_name = 'data.db'
 # so_code_dir = 'snippets'
 
 code_url = 'https://searchcode.com/api/result/{0}/'
-query = "stackoverflow.com"
+query = "http%20stackoverflow%20com"
 
 PAGE_RANGE_MIN = 0
 PAGE_RANGE_MAX = 49
 MAX_ITEM_PER_PAGE = 100
-per_page = 2
+per_page = 100
+
 
 def main():
     args = parse_arg()
@@ -30,46 +31,81 @@ def main():
     outdir, src_path, db_path = mk_dirs(args.outdir)
     with MyDB(os.path.join(db_path, db_file_name)) as db:
         db.createdb()
-        for i in range(args.p_end + 1):
+        for i in range(args.p_start, args.p_end + 1):
+            print "Processing [{now}/{all}].".format(now=i, all=args.p_end)
+
             url = construct_url(query, p=i, per_page=per_page, langs=args.langs)
-            # print url
+            data = get_json_from_url(url)
 
-            fh = urllib.urlopen(url)
-            data = json.load(fh, encoding='utf-8')
+            if not data:
+                continue
 
+            useful_count = 0
             for r in data['results']:
-                repo = r['repo']
-                repo_name = r['name']
-                view_url = r['url']
-                lines = r['lines']
-                fid = r['id']
-                name = r['filename']
-                loc = r['linescount']
-                lang = r['language']
-                hash = r['md5hash']
-                location = r['location']
+                posts = get_posts_from(r['lines'])
+                # store file and repo info into db
+                para = extract_para(r, posts)
 
-                qids = get_question_ids_from(lines)
+                db.insertfile(**para)
 
-                try:
-                    code = retrieve_code(fid)
-                    # print "code:", code
-                    fn = os.path.join(src_path, str(fid))
-                    with open(fn, 'w') as f:
-                        f.write(code.encode('utf-8'))
-                except IOError as e:
-                    print "Cannot get code content for file id: {fid}; Error:{e}" \
-                        .format(fid=fid, e=e)
-
-                if len(qids) > 0:
-                    # store file and repo info into db
+                if len(posts) > 0:
                     # code has some real SO links
-                    # print "qids:", qids
-                    db.insertfile(fid=fid, name=name, repo=repo, repo_name=repo_name,
-                                  lang=lang, url=view_url, hash=hash, loc=loc, location=location, qids=qids)
-                else:
-                    # False Positive
-                    print "{0} contains no real SO link".format(str(fid))
+                    write_code_to_file(para['fid'], src_path)
+                    useful_count += 1
+            print "{useful}/{total} are useful files on this page."\
+                .format(useful=useful_count, total=len(data['results']))
+
+
+def get_json_from_url(url):
+    try:
+        fh = urllib.urlopen(url)
+        text = fh.read()
+        try:
+            data = json.loads(text, encoding='utf-8')
+            return data
+        except ValueError as e:
+            print "Cannot decode json for: {url}\n{text}".format(url=url, text=text)
+    except IOError as e:
+        print "Cannot connect to: {url}".format(url=url)
+
+
+
+def extract_para(r, posts=None):
+    para = dict()
+    para['repo'] = r['repo']
+    para['repo_name'] = r['name']
+    para['url'] = r['url']
+    para['fid'] = r['id']
+    para['name'] = r['filename']
+    para['loc'] = r['linescount']
+    para['lang'] = r['language']
+    para['hash'] = r['md5hash']
+    para['location'] = r['location']
+    para['posts'] = posts
+    return para
+
+
+def write_code_to_file(fid, src_path):
+    fn = os.path.join(src_path, str(fid))
+    if os.path.exists(fn):
+        return
+    try:
+        url = code_url.format(fid)
+        data = get_json_from_url(url)
+        if not data:
+            return
+
+        code = data["code"]
+        # print "code:", code
+        try:
+            with open(fn, 'w') as f:
+                f.write(code.encode('utf-8'))
+        except IOError as e:
+            print "Cannot write to file: {fid}; Error:{e}" \
+                .format(fid=fid, e=e)
+    except IOError as e:
+        print "Cannot get code content for file id: {fid}; Error:{e}" \
+            .format(fid=fid, e=e)
 
 
 def mk_dirs(outdir):
@@ -99,6 +135,7 @@ def parse_arg():
     args.langs = parse_langs(args.langs)
     return args
 
+
 def parse_langs(langs_str):
     if not langs_str:
         return None
@@ -107,7 +144,7 @@ def parse_langs(langs_str):
     for lang in langs_str:
         try:
             langs_int.append(lang_dict[lang])
-        except :
+        except KeyError as e:
             print "Language not supported:", lang
     return langs_int
 
@@ -117,35 +154,42 @@ def construct_url(query, p=0, per_page=100, langs=None):
     if langs:
         for l in langs:
             lang_part += "&lan=" + str(l)
+    # TODO: set to: Javascript, Python, Java, C#, Objective C, PHP, C++, C/C++ Header, Ruby, C, Perl, R
+    lang_part = "&lan=22&lan=19&lan=23&lan=6&lan=21&lan=24&lan=16&lan=15&lan=32&lan=28&lan=51&lan=144"
     return search_url.format(q=query, p=p, pp=per_page, langs=lang_part)
 
 
-def retrieve_code(fid):
-    url = code_url.format(fid)
-    data = json.load(urllib.urlopen(url))
-    return data["code"]
-
-
-def get_so_qids(code):
+def get_so_post(code):
     # pat = re.compile('https?://stackoverflow\.com/questions/\d+')
     # pat = re.compile('https?://stackoverflow\.com/questions/\d+/?(\S+)?')
-    pat = re.compile('(https?://stackoverflow\.com/questions/(\d+)/?(?:\S+)?)')
-    matches = pat.findall(code)
+    q_pat = re.compile('https?://stackoverflow\.com/q(?:uestions)?/(\d+)')
+    a_pat = re.compile('https?://stackoverflow\.com/a/(\d+)')
+    to_find = [(q_pat, 1),  # question type id is 1
+               (a_pat, 2)]  # answer type id is 2
+    posts = []
+    for t in to_find:
+        matches = t[0].findall(code)
+        posts += build_post_tuple(matches, t[1])
+    return posts
+
+
+def build_post_tuple(matches, type_id):
+    posts = []
     if matches:
-        return map(lambda x: x[1], matches)
-        # return matches.group(0)
-    else:
-        return []
+        for m in matches:
+            posts.append((m, type_id))
+    return posts
 
 
-def get_question_ids_from(lines):
-    qids = []
+def get_posts_from(lines):
+    posts = []
     for code_line in lines.values():
-        qid = get_so_qids(code_line)
-        if qid:
-            qids += qid
-    return qids
+        post = get_so_post(code_line)
+        if post:
+            posts += post
+    return posts
 
 
 if __name__ == '__main__':
     main()
+    print "Done."
