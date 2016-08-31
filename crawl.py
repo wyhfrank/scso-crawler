@@ -3,11 +3,14 @@
 import json
 import urllib
 import re
+import os
 
 from mydb import MyDB
 
 search_url = 'https://searchcode.com/api/codesearch_I/?q={0}&p={1}&per_page={2}{3}'
 test_file = 'file:///D:/MyProjects/Python/search-code-crawler/search-result.json'
+
+outdir = 'files'
 
 code_url = 'https://searchcode.com/api/result/{0}/'
 query = "stackoverflow.com"
@@ -24,6 +27,8 @@ per_page = min(per_page, MAX_PER_PAGE)
 
 
 def main():
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
     with MyDB() as db:
         db.createdb()
         for i in range(max_page):
@@ -48,18 +53,20 @@ def main():
 
                 qids = get_question_ids_from(lines)
 
+                try:
+                    code = retrieve_code(fid)
+                    # print "code:", code
+                    fn = os.path.join(outdir, str(fid))
+                    with open(fn, 'w') as f:
+                        f.write(code)
+                except IOError as e:
+                    print "Cannot get code content for file id: {fid}; Error:{e}" \
+                        .format(fid=fid, e=e)
+
                 if len(qids) > 0:
+                    # store file and repo info into db
                     # code has some real SO links
                     # print "qids:", qids
-                    try:
-                        code = retrieve_code(fid)
-                        print "code:", code
-                        # TODO: wirte code to file
-                    except IOError as e:
-                        print "Cannot get code content for file id: {fid}; Error:{e}" \
-                            .format(fid=fid, e=e)
-
-                    # store file and repo info into db
                     db.insertfile(fid=fid, name=name, repo=repo, repo_name=repo_name,
                                   lang=lang, url=view_url, hash=hash, loc=loc, location=location, qids=qids)
                 else:
