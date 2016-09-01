@@ -11,6 +11,7 @@ from mydb import MyDB
 search_url = 'https://searchcode.com/api/codesearch_I/?q={q}&p={p}&per_page={pp}{langs}'
 # search_url = 'file:///D:/MyProjects/Python/search-code-crawler/search-result.json'
 
+# TODO: move to config files
 src_dir_name = 'src-files'
 db_dir_name = 'db'
 db_file_name = 'data.db'
@@ -20,7 +21,7 @@ code_url = 'https://searchcode.com/api/result/{0}/'
 query = "http%20stackoverflow%20com"
 
 PAGE_RANGE_MIN = 0
-PAGE_RANGE_MAX = 49
+PAGE_RANGE_MAX = 99999
 MAX_ITEM_PER_PAGE = 100
 per_page = 100
 
@@ -52,7 +53,7 @@ def main():
                     # code has some real SO links
                     write_code_to_file(para['fid'], src_path)
                     useful_count += 1
-            print "{useful}/{total} are useful files on this page."\
+            print "{useful}/{total} are useful files on this page." \
                 .format(useful=useful_count, total=len(data['results']))
 
 
@@ -67,7 +68,6 @@ def get_json_from_url(url):
             print "Cannot decode json for: {url}\n{text}".format(url=url, text=text)
     except IOError as e:
         print "Cannot connect to: {url}".format(url=url)
-
 
 
 def extract_para(r, posts=None):
@@ -139,6 +139,7 @@ def parse_arg():
 def parse_langs(langs_str):
     if not langs_str:
         return None
+    # TODO: build the language dictionary
     lang_dict = dict(python=1)
     langs_int = []
     for lang in langs_str:
@@ -150,10 +151,12 @@ def parse_langs(langs_str):
 
 
 def construct_url(query, p=0, per_page=100, langs=None):
-    lang_part = ""
-    if langs:
-        for l in langs:
-            lang_part += "&lan=" + str(l)
+    lang_list = []
+    if langs is not None:
+        for lan in langs:
+            lang_list.append(("lan", lan))
+            # lang_part += "&lan=" + str(l)
+    lang_part = urllib.urlencode(lang_list)
     # TODO: set to: Javascript, Python, Java, C#, Objective C, PHP, C++, C/C++ Header, Ruby, C, Perl, R
     lang_part = "&lan=22&lan=19&lan=23&lan=6&lan=21&lan=24&lan=16&lan=15&lan=32&lan=28&lan=51&lan=144"
     return search_url.format(q=query, p=p, pp=per_page, langs=lang_part)
