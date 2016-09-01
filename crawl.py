@@ -22,7 +22,7 @@ code_url = 'https://searchcode.com/api/result/{0}/'
 query = "http stackoverflow com"
 
 PAGE_RANGE_MIN = 0
-PAGE_RANGE_MAX = 99999
+PAGE_RANGE_MAX = 49
 MAX_ITEM_PER_PAGE = 100
 per_page = 100
 
