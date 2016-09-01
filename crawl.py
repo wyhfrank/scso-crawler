@@ -12,13 +12,14 @@ search_url = 'https://searchcode.com/api/codesearch_I/?q={q}&p={p}&per_page={pp}
 # search_url = 'file:///D:/MyProjects/Python/search-code-crawler/search-result.json'
 
 # TODO: move to config files
+# TODO: What is the best practice to put global config variable
 src_dir_name = 'src-files'
 db_dir_name = 'db'
 db_file_name = 'data.db'
 # so_code_dir = 'snippets'
 
 code_url = 'https://searchcode.com/api/result/{0}/'
-query = "http%20stackoverflow%20com"
+query = "http stackoverflow com"
 
 PAGE_RANGE_MIN = 0
 PAGE_RANGE_MAX = 99999
@@ -159,6 +160,7 @@ def construct_url(query, p=0, per_page=100, langs=None):
     lang_part = urllib.urlencode(lang_list)
     # TODO: set to: Javascript, Python, Java, C#, Objective C, PHP, C++, C/C++ Header, Ruby, C, Perl, R
     lang_part = "&lan=22&lan=19&lan=23&lan=6&lan=21&lan=24&lan=16&lan=15&lan=32&lan=28&lan=51&lan=144"
+    query = urllib.quote_plus(query)
     return search_url.format(q=query, p=p, pp=per_page, langs=lang_part)
 
 
