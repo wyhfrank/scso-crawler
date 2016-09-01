@@ -33,29 +33,31 @@ def main():
     outdir, src_path, db_path = mk_dirs(args.outdir)
     with MyDB(os.path.join(db_path, db_file_name)) as db:
         db.createdb()
-        for i in range(args.p_start, args.p_end + 1):
-            print "Processing [{now}/{all}].".format(now=i, all=args.p_end)
+        for lang in args.langs:
+            for i in range(args.p_start, args.p_end + 1):
+                print "Processing [{now}/{all}].".format(now=i, all=args.p_end)
 
-            url = construct_url(query, p=i, per_page=per_page, langs=args.langs)
-            data = get_json_from_url(url)
+                url = construct_url(query, p=i, per_page=per_page, langs=[lang])
+                print url
+                data = get_json_from_url(url)
 
-            if not data:
-                continue
+                if not data:
+                    continue
 
-            useful_count = 0
-            for r in data['results']:
-                posts = get_posts_from(r['lines'])
-                # store file and repo info into db
-                para = extract_para(r, posts)
+                useful_count = 0
+                for r in data['results']:
+                    posts = get_posts_from(r['lines'])
 
-                db.insertfile(**para)
+                    # store file and repo info into db
+                    para = extract_para(r, posts)
+                    db.insertfile(**para)
 
-                if len(posts) > 0:
-                    # code has some real SO links
-                    write_code_to_file(para['fid'], src_path)
-                    useful_count += 1
-            print "{useful}/{total} are useful files on this page." \
-                .format(useful=useful_count, total=len(data['results']))
+                    if len(posts) > 0:
+                        # code has some real SO links
+                        write_code_to_file(para['fid'], src_path)
+                        useful_count += 1
+                print "{useful}/{total} are useful files on this page." \
+                    .format(useful=useful_count, total=len(data['results']))
 
 
 def get_json_from_url(url):
@@ -128,7 +130,7 @@ def parse_arg():
                         help='start from page N (default: 0)', metavar='N')
     parser.add_argument('--page-end', dest='p_end', default=49, type=int,
                         help='end with page N (default: 49)', metavar='N')
-    parser.add_argument('--langs', dest='langs', nargs='*',
+    parser.add_argument('--langs', dest='langs', nargs='*', default = [22,19,23,6,21,24,16,15,32,28,51,144],
                         help='language filter, separate with space')
     args = parser.parse_args()
     args.p_start = max(PAGE_RANGE_MIN, min(args.p_start, PAGE_RANGE_MAX))
@@ -144,10 +146,16 @@ def parse_langs(langs_str):
     lang_dict = dict(python=1)
     langs_int = []
     for lang in langs_str:
+        val = None
         try:
-            langs_int.append(lang_dict[lang])
-        except KeyError as e:
-            print "Language not supported:", lang
+            val = int(lang)
+        except ValueError:
+            try:
+                val = lang_dict[lang]
+            except KeyError as e:
+                print "Language not supported:", lang
+        if val is not None:
+            langs_int.append(val)
     return langs_int
 
 
@@ -157,9 +165,9 @@ def construct_url(query, p=0, per_page=100, langs=None):
         for lan in langs:
             lang_list.append(("lan", lan))
             # lang_part += "&lan=" + str(l)
-    lang_part = urllib.urlencode(lang_list)
+    lang_part = "&" + urllib.urlencode(lang_list)
     # TODO: set to: Javascript, Python, Java, C#, Objective C, PHP, C++, C/C++ Header, Ruby, C, Perl, R
-    lang_part = "&lan=22&lan=19&lan=23&lan=6&lan=21&lan=24&lan=16&lan=15&lan=32&lan=28&lan=51&lan=144"
+    # lang_part = "&lan=22&lan=19&lan=23&lan=6&lan=21&lan=24&lan=16&lan=15&lan=32&lan=28&lan=51&lan=144"
     query = urllib.quote_plus(query)
     return search_url.format(q=query, p=p, pp=per_page, langs=lang_part)
 
