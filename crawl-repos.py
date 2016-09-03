@@ -32,14 +32,16 @@ class GitHubCrawler(object):
     def set_rows(self, rows):
         self.rows = rows
 
-    def start(self, force=False):
+    def start(self, force_commits=False, force_stars=False):
         gh = Github()
         gh.repos.set_credentials(login=self.login, password=self.password)
 
         total_count = len(self.rows)
         count = 0
         for row in self.rows:
-            raw_url = row['url']
+            # need to convert sqlite3.Row object to dict type, in order to assign value
+            info = dict(row)
+            raw_url = info['url']
             # print raw_url
             username, reponame = self.parse_user_repo(raw_url)
             count += 1
@@ -51,37 +53,38 @@ class GitHubCrawler(object):
             print "[{current}/{total}]: repo:{user}/{repo}" \
                 .format(current=count, total=total_count, user=username, repo=reponame)
 
+
             key1 = 'stars'
             try:
-                old_stars = row[key1]
+                old_stars = info[key1]
                 # print old_stars
-                if self.need_to_update_value(old_stars, force):
+                if self.need_to_update_value(old_stars, force_stars):
                     try:
                         repo_data = gh.repos.get(user=username, repo=reponame)
                         tmp = self.retrieve_repo_basic_info(repo_data)
-                        row.update(tmp)
+                        info.update(tmp)
                     except GitHubErrors.NotFound as e:
                         print "Repo not found: [{u}/{r}]".format(u=username, r=reponame)
-                        row[key1] = -1
+                        info[key1] = -1
                     except requests.exceptions.ConnectionError as e:
                         print "Cannot connect to repo: {user}/{repo}".format(user=username, repo=reponame)
             except (KeyError, IndexError) as e:
-                print "Warning: Key '{key}' not in data: {data}".format(key=key1, data=row)
+                print "Warning: Key '{key}' not in data: {data}".format(key=key1, data=info)
 
             key2 = 'commits'
             try:
-                old_commits = row[key2]
-                if self.need_to_update_value(old_commits, force):
+                old_commits = info[key2]
+                if self.need_to_update_value(old_commits, force_commits):
                     repo_url = self.construct_repo_url(username, reponame)
                     try:
                         commits, contribs = self.parse_commits_contribs(repo_url)
                         tmp = self.retrieve_repo_commit_info(commits, contribs)
-                        row.update(tmp)
+                        info.update(tmp)
                     except IOError as e:
                         print "Cannot connect to {url}.".format(url=repo_url)
             except (KeyError, IndexError) as e:
-                print "Warning: Key {key} not in data: {data}".format(key=key2, data=row)
-            self.callback(row)
+                print "Warning: Key {key} not in data: {data}".format(key=key2, data=info)
+            self.callback(info)
 
     @staticmethod
     def need_to_update_value(val, force, failed_val=-1):
@@ -132,14 +135,20 @@ class GitHubCrawler(object):
     # thus parse the repository page directly
     @staticmethod
     def parse_commits_contribs(repo_url):
+        commits = contribs = -1
         # with open(r'test-data\repo.html') as f:
         #     html = f.read()
         fh = urllib.urlopen(repo_url)
         html = fh.read()
         parsed_html = BeautifulSoup(html, 'html.parser')
         ul = parsed_html.body.find('ul', attrs={'class': 'numbers-summary'})
-        commits = contribs = -1
-        for i in ul.find_all('a'):
+        if ul is None:
+            return commits, contribs
+
+        tags = ul.find_all('a')
+        if tags is None:
+            return commits, contribs
+        for i in tags:
             num, name = list(i.stripped_strings)
             if name.find('commit') != -1:
                 commits = int(num.replace(',', ''))
@@ -157,15 +166,17 @@ def main():
         rows = db.select_all_repos()
 
         gc = GitHubCrawler(rows, lambda r: db.update_repo(**r), config['login'], config['password'])
-        gc.start(args.force)
+        gc.start(args.force_commits, args.force_stars)
 
 
 def parse_arg():
     parser = argparse.ArgumentParser()
     parser.add_argument('-o', '--outdir', dest='outdir', default='data',
                         help='specify the output directory (default: data)')
-    parser.add_argument('-f', '--force-update', dest='force', default=False,
-                        help='force updating data', action='store_true')
+    parser.add_argument('-fc', '--force-commits', dest='force_commits', default=False,
+                        help='force updating data: commits, contributors', action='store_true')
+    parser.add_argument('-fs', '--force-stars', dest='force_stars', default=False,
+                        help='force updating data: stars, forks...', action='store_true')
     args = parser.parse_args()
     return args
 
