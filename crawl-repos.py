@@ -170,8 +170,13 @@ class GitHubCrawler(object):
         fh = urllib.urlopen(contrib_url)
         html = fh.read()
         parsed_html = BeautifulSoup(html, 'html.parser')
-        tag = parsed_html.body.find('a')
+        # print parsed_html
+        tag = parsed_html.find('a')
         if tag is None:
+            return contribs
+
+        href = tag['href']
+        if not href.endswith('contributors'):
             return contribs
 
         num, name = list(tag.stripped_strings)
@@ -181,13 +186,18 @@ class GitHubCrawler(object):
 
 
 def main():
+
+    def process_data(r):
+        db.update_repo(**r)
+        # print r
+
     args = parse_arg()
 
     outdir, src_path, db_path = mk_dirs(args.outdir)
     with MyDB(os.path.join(db_path, db_file_name)) as db:
         rows = db.select_all_repos()
 
-        gc = GitHubCrawler(rows, lambda r: db.update_repo(**r), config['login'], config['password'])
+        gc = GitHubCrawler(rows, process_data, config['login'], config['password'])
         gc.start(args.force_commits, args.force_stars)
 
 
