@@ -17,7 +17,8 @@ from crawl import src_dir_name, db_dir_name, db_file_name, mk_dirs, get_json_fro
 
 # repo_api = 'https://api.github.com/repos/{user_project}'
 # contrib_api = 'https://api.github.com/repos/{user_project}/contributors'
-url_template = 'https://github.com/{user}/{repo}'
+reop_url_template = 'https://github.com/{user}/{repo}'
+contrib_url_template = 'https://github.com/{user}/{repo}/contributors_size'
 config_file = 'config.json'
 config = json.load(open(config_file))
 
@@ -50,7 +51,7 @@ class GitHubCrawler(object):
                     .format(current=count, total=total_count, url=raw_url)
                 continue
 
-            print "[{current}/{total}]: repo:{user}/{repo}" \
+            print "[{current}/{total}]: repo: {user}/{repo}" \
                 .format(current=count, total=total_count, user=username, repo=reponame)
 
 
@@ -76,8 +77,10 @@ class GitHubCrawler(object):
                 old_commits = info[key2]
                 if self.need_to_update_value(old_commits, force_commits):
                     repo_url = self.construct_repo_url(username, reponame)
+                    contrib_url = self.construct_contrib_url(username, reponame)
                     try:
-                        commits, contribs = self.parse_commits_contribs(repo_url)
+                        commits = self.parse_commits(repo_url)
+                        contribs = self.parse_contribs(contrib_url)
                         tmp = self.retrieve_repo_commit_info(commits, contribs)
                         info.update(tmp)
                     except IOError as e:
@@ -104,6 +107,7 @@ class GitHubCrawler(object):
     @staticmethod
     def parse_user_repo(url):
         if url.find('github.com') != -1:
+            # http://stackoverflow.com/questions/3663450/python-remove-substring-only-at-the-end-of-string/3663505#3663505
             if url.endswith('.git'):
                 url = url[:-len('.git')]
             pat = re.compile('github\.com/([^/]+)/([^/]+)')
@@ -114,7 +118,11 @@ class GitHubCrawler(object):
 
     @staticmethod
     def construct_repo_url(user, repo):
-        return url_template.format(user=user, repo=repo)
+        return reop_url_template.format(user=user, repo=repo)
+
+    @staticmethod
+    def construct_contrib_url(user, repo):
+        return contrib_url_template.format(user=user, repo=repo)
 
     @staticmethod
     def retrieve_repo_basic_info(repo_data):
@@ -134,28 +142,42 @@ class GitHubCrawler(object):
     # The method to calculate the number of commits and contributors is not accurate using pygtihub3,
     # thus parse the repository page directly
     @staticmethod
-    def parse_commits_contribs(repo_url):
-        commits = contribs = -1
+    def parse_commits(repo_url):
+        commits = -1
         # with open(r'test-data\repo.html') as f:
         #     html = f.read()
         fh = urllib.urlopen(repo_url)
         html = fh.read()
         parsed_html = BeautifulSoup(html, 'html.parser')
-        ul = parsed_html.body.find('ul', attrs={'class': 'numbers-summary'})
-        if ul is None:
-            return commits, contribs
+        tag = parsed_html.body.find('li', attrs={'class': 'commits'})
+        if tag is None:
+            return commits
 
-        tags = ul.find_all('a')
-        if tags is None:
-            return commits, contribs
-        for i in tags:
-            num, name = list(i.stripped_strings)
-            if name.find('commit') != -1:
-                commits = int(num.replace(',', ''))
-            elif name.find('contributor') != -1:
-                contribs = int(num.replace(',', ''))
+        num, name = list(tag.stripped_strings)
+        commits = int(num.replace(',', ''))
 
-        return commits, contribs
+        return commits
+
+    # The method to calculate the number of commits and contributors is not accurate using pygtihub3,
+    # thus parse the repository page directly
+    # This contributors_size page is a AJAX request from the original repo page
+    # http://stackoverflow.com/questions/8323728/scraping-dynamic-content-in-a-website/8324357#8324357
+    @staticmethod
+    def parse_contribs(contrib_url):
+        contribs = -1
+        # with open(r'test-data\contributors_size.html') as f:
+        #     html = f.read()
+        fh = urllib.urlopen(contrib_url)
+        html = fh.read()
+        parsed_html = BeautifulSoup(html, 'html.parser')
+        tag = parsed_html.body.find('a')
+        if tag is None:
+            return contribs
+
+        num, name = list(tag.stripped_strings)
+        contribs = int(num.replace(',', ''))
+
+        return contribs
 
 
 def main():
@@ -195,9 +217,10 @@ def _test():
     ]
 
     gc = GitHubCrawler(rows, process_data, config['login'], config['password'])
-    gc.start()
+    gc.start(True)
 
 
 if __name__ == '__main__':
+    # _test()
     main()
     print "Done."
